@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AsyncCallback.Handler</AssemblyName>
+    <AWSProjectType>Lambda</AWSProjectType>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.Core" />
+    <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" />
+    <PackageReference Include="Amazon.Lambda.SQSEvents" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MarcondesOliveira.AsyncTransactions.CallbackHandler.Application/MarcondesOliveira.AsyncTransactions.CallbackHandler.Application.csproj" />
+    <ProjectReference Include="../MarcondesOliveira.AsyncTransactions.CallbackHandler.Infrastructure/MarcondesOliveira.AsyncTransactions.CallbackHandler.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

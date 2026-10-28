@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/MarcondesOliveira.AsyncTransactions.CallbackHandler.Application/MarcondesOliveira.AsyncTransactions.CallbackHandler.Application.csproj" />
+  <Project Path="src/MarcondesOliveira.AsyncTransactions.CallbackHandler.Infrastructure/MarcondesOliveira.AsyncTransactions.CallbackHandler.Infrastructure.csproj" />
+  <Project Path="src/MarcondesOliveira.AsyncTransactions.CallbackHandler.Host/MarcondesOliveira.AsyncTransactions.CallbackHandler.Host.csproj" />
+  <Project Path="tests/MarcondesOliveira.AsyncTransactions.CallbackHandler.UnitTests/MarcondesOliveira.AsyncTransactions.CallbackHandler.UnitTests.csproj" />
+  <Project Path="tests/MarcondesOliveira.AsyncTransactions.CallbackHandler.IntegrationTests/MarcondesOliveira.AsyncTransactions.CallbackHandler.IntegrationTests.csproj" />
+  <Project Path="tests/MarcondesOliveira.AsyncTransactions.CallbackHandler.ContractTests/MarcondesOliveira.AsyncTransactions.CallbackHandler.ContractTests.csproj" />
+</Solution>

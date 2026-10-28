@@ -1,0 +1,10 @@
+{
+  "Records": [
+    {
+      "messageId": "manual-callback-0001",
+      "body": "{\"eventVersion\":1,\"eventType\":\"TransactionProcessed\",\"eventId\":\"5fd68392-40e3-4273-b6cc-b5546342ce28\",\"occurredAt\":\"2026-10-28T18:45:35.481Z\",\"transactionId\":\"06f26a61-3ae3-4f80-a4e9-061a3a73ad6d\",\"correlationId\":\"f452ea72-e88d-48e9-875f-3f5e7f2736e6\",\"processorTransactionId\":\"dbd539d5-dfb1-4ed6-b8c8-1ad6f2d096ac\",\"status\":\"SUCCEEDED\",\"result\":{\"code\":\"APPROVED\",\"message\":\"Transaction processed successfully\"}}",
+      "eventSource": "aws:sqs",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}
