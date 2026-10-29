@@ -2,7 +2,7 @@
 
 AWS Lambda that consumes transaction results from SQS and applies them to DynamoDB in the Async Transaction Processing portfolio project.
 
-This service receives version 1 `TransactionProcessed` events. The HTTP callback endpoint, SNS topic, SQS queues, event-source mapping and deployment resources belong to the infrastructure repository and are introduced in the callback pipeline stage.
+This service receives version 1 `TransactionProcessed` events. The HTTP callback endpoint, SNS topic, SQS queues, event-source mapping and deployment resources belong to the infrastructure repository.
 
 ## Behavior
 
@@ -15,7 +15,7 @@ This service receives version 1 `TransactionProcessed` events. The HTTP callback
 - Allows another event ID for an identical terminal result by recording a receipt and condition-checking the transaction without changing its timestamps.
 - Rejects a reused event ID with different business data or a conflicting terminal result.
 - Returns partial SQS batch failures so successful records in the same batch are not retried.
-- Logs event, transaction and correlation identifiers on success; logs message ID and exception on failure.
+- Logs message, event, transaction, correlation and processor identifiers on handled outcomes and on failures when the event can be deserialized.
 
 ## Projects
 
@@ -46,7 +46,7 @@ dotnet test --no-build --disable-build-servers -m:1
 dotnet format --no-restore --verify-no-changes
 ```
 
-There are 29 cases: 8 unit, 18 repository integration and 3 contract tests. They use controlled AWS client substitutes and require no AWS resources or credentials. Integration tests inspect the actual repository's transaction requests, including null/empty reads, conditional race recovery and infrastructure errors; they do not execute DynamoDB's condition-expression engine. Real service behavior must also be validated after deployment.
+There are 34 cases: 13 unit, 18 repository integration and 3 contract tests. They use controlled AWS client substitutes and require no AWS resources or credentials. Integration tests inspect the actual repository's transaction requests, including null/empty reads, conditional race recovery and infrastructure errors; they do not execute DynamoDB's condition-expression engine. Real service behavior must also be validated after deployment.
 
 ## Runtime configuration
 
@@ -83,6 +83,26 @@ This handler does not create missing transactions, authenticate the external sen
 
 ## Manual tests and deployment status
 
-The code is prepared for local review and testing; this Lambda has not yet been deployed. See [manual testing](docs/manual-testing.md) for a console event and the expected results after deployment. At this stage, Bruno/Swagger cannot call this handler directly. End-to-end HTTP testing becomes possible after the callback endpoint, SNS and SQS pipeline are deployed.
+The baseline Lambda and callback pipeline have been deployed and validated end to end. The Stage 12 log changes require a new reviewed deployment before they appear in AWS. See [manual testing](docs/manual-testing.md) for a console event and HTTP test instructions. Bruno/Swagger calls the HTTP APIs, not this SQS Lambda directly.
+
+## Operational logs
+
+`CallbackHandled` records `Applied` (the result was persisted) or `Duplicate`
+(the existing result was preserved). `CallbackProcessingFailed` identifies an SQS
+record returned in the partial batch failure response. It includes the exception
+type, root-cause type and stack trace, without exception messages, result fields
+or the raw payload. Malformed JSON is traceable through `MessageId`; event IDs
+are included only when deserialization succeeds and may still be invalid if
+validation fails.
+
+The native `ILambdaLogger` named parameters become top-level JSON fields when
+JSON logging is enabled by Terraform. This application change alone does not
+change the deployed log format. After deployment, create a transaction through
+the main API with Bruno or Swagger, then inspect the callback-handler log group
+for `CallbackHandled`, `Applied` and the same transaction/correlation IDs. A
+repeated identical callback should log `Duplicate` without changing the final
+transaction timestamps. Conflicting callbacks should log
+`CallbackProcessingFailed` and leave the stored result unchanged; retry/DLQ
+behavior still applies.
 
 Cloning, building and running tests do not deploy resources. Commits and pushes are performed manually by the repository owner.

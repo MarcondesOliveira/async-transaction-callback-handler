@@ -33,19 +33,24 @@ public sealed class CallbackFunction
         var failures = new List<SQSBatchResponse.BatchItemFailure>();
         foreach (var record in sqsEvent.Records)
         {
+            TransactionProcessed? callback = null;
             try
             {
-                var callback = JsonSerializer.Deserialize<TransactionProcessed>(record.Body, JsonOptions)
+                callback = JsonSerializer.Deserialize<TransactionProcessed>(record.Body, JsonOptions)
                     ?? throw new JsonException("SQS body must contain a callback event.");
                 var outcome = await processor.HandleAsync(callback, CancellationToken.None);
                 context.Logger.LogInformation(
-                    "Callback {EventId} for transaction {TransactionId}, correlation {CorrelationId}: {Outcome}.",
-                    callback.EventId, callback.TransactionId, callback.CorrelationId, outcome);
+                    "{EventName} messageId={MessageId} eventId={EventId} transactionId={TransactionId} correlationId={CorrelationId} processorTransactionId={ProcessorTransactionId} outcome={Outcome}",
+                    "CallbackHandled", record.MessageId, callback.EventId, callback.TransactionId,
+                    callback.CorrelationId, callback.ProcessorTransactionId, outcome);
             }
             catch (Exception exception)
             {
                 context.Logger.LogError(
-                    "Callback SQS message {MessageId} failed: {Exception}", record.MessageId, exception);
+                    "{EventName} messageId={MessageId} eventId={EventId} transactionId={TransactionId} correlationId={CorrelationId} processorTransactionId={ProcessorTransactionId} errorType={ErrorType} causeType={CauseType} stackTrace={StackTrace}",
+                    "CallbackProcessingFailed", record.MessageId, callback?.EventId, callback?.TransactionId,
+                    callback?.CorrelationId, callback?.ProcessorTransactionId, exception.GetType().Name,
+                    exception.GetBaseException().GetType().Name, exception.StackTrace);
                 failures.Add(new SQSBatchResponse.BatchItemFailure { ItemIdentifier = record.MessageId });
             }
         }
