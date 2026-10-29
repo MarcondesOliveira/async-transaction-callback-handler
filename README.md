@@ -88,6 +88,49 @@ The package job requests no AWS credentials/OIDC and performs no S3 upload or
 deployment; it does not change the running handler. No new Bruno/Swagger test is
 required until an actual reviewed deployment.
 
+### Manual S3 publication through OIDC
+
+`Publish Callback Handler artifact` (`.github/workflows/publish.yml`) is dispatch-only and
+restricted to `main`. It publishes an existing successful main CI run's bundle;
+it does not rebuild source, run Terraform or change the Lambda.
+
+Repository variables hold deployment metadata outside source code:
+`AWS_REGION`, `AWS_ACCOUNT_ID`, `ARTIFACT_BUCKET` and `AWS_ARTIFACT_ROLE_ARN`.
+They are not AWS access keys. The existing IAM trust must match this repository's
+verified immutable OIDC subject, audience STS and `main` branch. No environment
+name is configured on this job because that would change its subject format.
+
+1. Wait for the chosen `CI` run on `main` to succeed, including packaging.
+2. Open **Actions → Publish Callback Handler artifact → Run workflow**, select `main`, supply
+   the numeric `ci_run_id` and type `PUBLISH` in `confirmation`.
+3. The job checks the run's workflow path, repository, event, branch and conclusion,
+   downloads its exact commit/run/attempt artifact, and verifies the fixed package
+   name, target, ZIP layout, manifest and both checksum representations.
+4. Only then it assumes the existing artifact-publisher role via OIDC, checks the
+   AWS account and uploads the ZIP plus manifest/checksum to the commit prefix.
+   Conditional `If-None-Match: *` writes refuse existing keys. The final ZIP
+   checksum, encryption and source-commit metadata are checked against S3.
+
+This job alone receives `id-token: write`; CI jobs remain without AWS credentials.
+It requests a 15-minute role session, masks deployment identifiers in logs and
+uses actions pinned by SHA. The role remains shared with other application
+repositories: per-repository IAM isolation is not introduced here. Conditional
+writes protect this workflow, not every possible client of the bucket.
+
+An existing key produces a failure rather than replacement, including on rerun.
+The three object writes are not atomic: a partial failure can leave an uploaded
+ZIP without its companion files. Inspect the error, object/version and checksums
+with the owner before any retry or cleanup; there is no automatic delete/rollback.
+An expired GitHub artifact cannot be published with this workflow. Do not rebuild
+the same commit and overwrite its existing S3 package to work around either case.
+
+After a successful upload, inspect the workflow and S3 evidence together. A manual
+Bruno/Swagger transaction adds no publication coverage because the running Lambda
+has not changed; end-to-end testing belongs to the later reviewed deploy.
+
+References: [AWS OIDC action](https://github.com/aws-actions/configure-aws-credentials),
+[S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
 ## Runtime configuration
 
 | Setting | Value |

@@ -1,0 +1,94 @@
+name: Publish Callback Handler artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful main CI run ID containing the Callback Handler artifact
+        required: true
+        type: string
+      confirmation:
+        description: Type PUBLISH to upload to S3 (does not deploy Lambda)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-callback-handler-artifact
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and publish Callback Handler artifact
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ inputs.ci_run_id }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+      AWS_ARTIFACT_ROLE_ARN: ${{ vars.AWS_ARTIFACT_ROLE_ARN }}
+      AWS_PAGER: ''
+    steps:
+      - name: Checkout publication scripts
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate request and download approved CI artifact
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = PUBLISH
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          : "${AWS_REGION:?Configure AWS_REGION repository variable}"
+          : "${AWS_ACCOUNT_ID:?Configure AWS_ACCOUNT_ID repository variable}"
+          : "${ARTIFACT_BUCKET:?Configure ARTIFACT_BUCKET repository variable}"
+          : "${AWS_ARTIFACT_ROLE_ARN:?Configure AWS_ARTIFACT_ROLE_ARN repository variable}"
+          [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]
+          echo "::add-mask::$AWS_ACCOUNT_ID"
+          echo "::add-mask::$ARTIFACT_BUCKET"
+          echo "::add-mask::$AWS_ARTIFACT_ROLE_ARN"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .status == "completed" and .conclusion == "success" and
+            .head_branch == "main" and .path == ".github/workflows/ci.yml" and
+            .repository.full_name == $repo and .head_repository.full_name == $repo and
+            (.event == "push" or .event == "workflow_dispatch")
+          ' "$RUNNER_TEMP/source-run.json"
+          source_sha="$(jq -r '.head_sha' "$RUNNER_TEMP/source-run.json")"
+          attempt="$(jq -r '.run_attempt' "$RUNNER_TEMP/source-run.json")"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ && "$attempt" =~ ^[0-9]+$ ]]
+          name="async-transaction-callback-handler-$source_sha-$SOURCE_RUN_ID-$attempt"
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$name" --dir "$RUNNER_TEMP/approved-callback-handler-artifact"
+          SOURCE_COMMIT="$source_sha" bash .github/scripts/publish.sh \
+            "$RUNNER_TEMP/approved-callback-handler-artifact" --verify-only
+          echo "commit=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Assume artifact publisher role through OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0 (Node.js 24)
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ARTIFACT_ROLE_ARN }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: callback-publish-${{ github.run_id }}
+          role-duration-seconds: 900
+          mask-aws-account-id: true
+          unset-current-credentials: true
+          retry-max-attempts: 2
+
+      - name: Publish without overwriting and verify S3 checksum
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: bash .github/scripts/publish.sh "$RUNNER_TEMP/approved-callback-handler-artifact" --publish
