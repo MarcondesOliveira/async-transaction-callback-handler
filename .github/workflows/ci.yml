@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: 'true'
+
+jobs:
+  validate:
+    name: Build, test and audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore MarcondesOliveira.AsyncTransactions.CallbackHandler.slnx --disable-parallel
+
+      - name: Check formatting
+        run: dotnet format MarcondesOliveira.AsyncTransactions.CallbackHandler.slnx --no-restore --verify-no-changes --verbosity minimal
+
+      - name: Build with analyzers and warnings as errors
+        run: dotnet build MarcondesOliveira.AsyncTransactions.CallbackHandler.slnx --no-restore --configuration Release --disable-build-servers -m:1
+
+      - name: Run unit, integration and contract tests
+        run: dotnet test MarcondesOliveira.AsyncTransactions.CallbackHandler.slnx --no-build --no-restore --configuration Release --disable-build-servers -m:1
+
+      - name: Audit direct and transitive dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/nuget-audit.json"
+          dotnet list MarcondesOliveira.AsyncTransactions.CallbackHandler.slnx package --vulnerable --include-transitive --no-restore --format json --output-version 1 > "$report"
+          cat "$report"
+          jq -e '
+            (.projects | length > 0) and
+            ((.problems // []) | length == 0) and
+            ([.projects[]?.frameworks[]? |
+              (.topLevelPackages[]?, .transitivePackages[]?) |
+              select((.vulnerabilities // [] | length) > 0)] | length == 0)
+          ' "$report"

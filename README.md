@@ -48,6 +48,21 @@ dotnet format --no-restore --verify-no-changes
 
 There are 34 cases: 13 unit, 18 repository integration and 3 contract tests. They use controlled AWS client substitutes and require no AWS resources or credentials. Integration tests inspect the actual repository's transaction requests, including null/empty reads, conditional race recovery and infrastructure errors; they do not execute DynamoDB's condition-expression engine. Real service behavior must also be validated after deployment.
 
+## Continuous integration
+
+The `CI` workflow runs on pull requests targeting `main`, pushes to `main`, and
+manual dispatch. It restores dependencies, verifies formatting, builds Release
+with the configured .NET analyzers/warnings as errors, runs unit/integration/contract
+tests and audits direct/transitive NuGet dependencies. Reported vulnerabilities
+fail the job; the JSON report is printed in the job log for investigation.
+
+The workflow follows the validated Transaction API and Request Handler CI pattern:
+actions pinned to commit SHAs, read-only repository permissions and no persisted
+checkout token. It requests no AWS credentials or OIDC token, publishes no
+deployment package and does not modify AWS. Tests use controlled substitutes,
+so a manual Bruno/Swagger test is not needed for this CI-only change. Branch
+protection is separate and is not enabled by adding the workflow.
+
 ## Runtime configuration
 
 | Setting | Value |
