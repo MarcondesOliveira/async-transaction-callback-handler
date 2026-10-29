@@ -60,3 +60,33 @@ jobs:
               (.topLevelPackages[]?, .transitivePackages[]?) |
               select((.vulnerabilities // [] | length) > 0)] | length == 0)
           ' "$report"
+
+  package:
+    name: Package Lambda ARM64
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish, package and checksum
+        run: bash .github/scripts/package.sh "$RUNNER_TEMP/callback-handler-artifact"
+
+      - name: Store versioned deployment artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: async-transaction-callback-handler-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/callback-handler-artifact/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
