@@ -1,6 +1,10 @@
-name: Publish Callback Handler artifact
+name: Deliver Callback Handler
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       ci_run_id:
@@ -8,7 +12,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type PUBLISH to upload to S3 (does not deploy Lambda)
+        description: Type PUBLISH to publish and deploy through Terraform
         required: true
         type: string
 
@@ -17,22 +21,28 @@ permissions:
 
 concurrency:
   group: publish-callback-handler-artifact
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   publish:
-    name: Verify and publish Callback Handler artifact
-    if: github.ref == 'refs/heads/main'
+    name: Publish Callback Handler and await verified deployment
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
       id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN_ID: ${{ inputs.ci_run_id }}
-      CONFIRMATION: ${{ inputs.confirmation }}
+      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}
+      CONFIRMATION: ${{ github.event_name == 'workflow_run' && 'PUBLISH' || inputs.confirmation }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
@@ -43,6 +53,14 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+
+      - name: Validate deployment automation
+        run: python3 -m unittest discover -s tests/delivery -v
+
+      - name: Check cross-repository token is configured
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_WORKFLOW_TOKEN }}
+        run: test -n "$GH_TOKEN"
 
       - name: Validate request and download approved CI artifact
         id: source
@@ -92,3 +110,9 @@ jobs:
         env:
           SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
         run: bash .github/scripts/publish.sh "$RUNNER_TEMP/approved-callback-handler-artifact" --publish
+
+      - name: Deploy through infrastructure and await result
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_WORKFLOW_TOKEN }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: python3 .github/scripts/deploy.py

@@ -8,3 +8,5 @@ coverage/
 *.user
 *.zip
 .env
+__pycache__/
+*.pyc
