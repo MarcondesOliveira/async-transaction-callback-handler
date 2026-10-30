@@ -2,6 +2,7 @@
 
 [Complete project overview](https://github.com/MarcondesOliveira/async-transaction-infrastructure)
 · [From-zero reproduction guide](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/reproduce.md)
+· [Cross-service contracts and states](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/contracts.md)
 
 This README covers the SQS result consumer, not the HTTP webhook endpoint. The
 central guide covers the five repositories, owner provisioning, GitHub/OIDC setup
