@@ -1,5 +1,12 @@
 # Async Transaction Callback Handler
 
+[Complete project overview](https://github.com/MarcondesOliveira/async-transaction-infrastructure)
+· [From-zero reproduction guide](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/reproduce.md)
+
+This README covers the SQS result consumer, not the HTTP webhook endpoint. The
+central guide covers the five repositories, owner provisioning, GitHub/OIDC setup
+and teardown. Routine delivery requires an existing stack and packages.
+
 AWS Lambda that consumes transaction results from SQS and applies them to DynamoDB in the Async Transaction Processing portfolio project.
 
 This service receives version 1 `TransactionProcessed` events. The HTTP callback endpoint, SNS topic, SQS queues, event-source mapping and deployment resources belong to the infrastructure repository.
@@ -33,7 +40,10 @@ docs/
   events/callback-success.json
 ```
 
-Application owns the contract and validation. Infrastructure performs consistent reads and conditional transactional writes. Host deserializes raw SQS bodies, calls the processor and reports individual failed message IDs.
+Application owns the contract and validation. Infrastructure performs consistent
+reads and conditional transactional writes. Host deserializes raw SQS bodies,
+invokes the callback-processing use case and reports individual failed message
+IDs; it does not call the external processor's HTTP API.
 
 ## Build and test
 
@@ -44,6 +54,7 @@ dotnet restore
 dotnet build --no-restore --disable-build-servers -m:1
 dotnet test --no-build --disable-build-servers -m:1
 dotnet format --no-restore --verify-no-changes
+python3 -m unittest discover -s tests/delivery -v
 ```
 
 There are 34 cases: 13 unit, 18 repository integration and 3 contract tests. They use controlled AWS client substitutes and require no AWS resources or credentials. Integration tests inspect the actual repository's transaction requests, including null/empty reads, conditional race recovery and infrastructure errors; they do not execute DynamoDB's condition-expression engine. Real service behavior must also be validated after deployment.
@@ -60,7 +71,7 @@ The workflow follows the validated Transaction API and Request Handler CI patter
 actions pinned to commit SHAs, read-only repository permissions and no persisted
 checkout token. The validation job requests no AWS credentials or OIDC token, publishes no
 deployment package and does not modify AWS. Tests use controlled substitutes,
-so a manual Bruno/Swagger test is not needed for this CI-only change. Branch
+so live Bruno/Swagger calls are not needed to run CI. Branch
 protection is separate and is not enabled by adding the workflow.
 
 ### Versioned Lambda artifact
@@ -92,8 +103,9 @@ downstream delivery workflow for publication and central Terraform deployment.
 ### Automated delivery through OIDC
 
 `Deliver Callback Handler` (`.github/workflows/publish.yml`) runs after successful
-`CI` from a push to this repository's `main`. PRs, forks, failed/cancelled CI and
-manual CI runs do not automatically deploy. It publishes the exact approved CI
+`CI` from a push to this repository's `main`. PR runs, failed/cancelled CI, runs
+from another head repository and manual CI do not automatically deploy.
+It publishes the exact approved CI
 bundle without rebuilding, then dispatches the central infrastructure workflow
 with `service=async-transaction-callback-handler` and the full source commit.
 The central guard permits only the Callback Handler package update and preserves
@@ -149,9 +161,10 @@ smoke success, reporting that run's URL in logs/summary. After successful delive
 you can test manually through the main Transaction API's Swagger or Bruno:
 POST `/transactions` with synthetic data and a new `Idempotency-Key`, then GET
 `/transactions/{transactionId}` until `SUCCEEDED/APPROVED`. The Callback Handler
-itself consumes SQS; it has no HTTP/Swagger endpoint. No manual test is required
-before push because this change only adds automation; the first automatic real
-delivery still needs verification after the owner pushes.
+itself consumes SQS; it has no HTTP/Swagger endpoint. Automatic main-push delivery
+has been validated on AWS through the central deployment, package verification,
+final synthetic result and source-workflow success. The owner also checked the
+transaction manually through the main API.
 
 Run orchestration tests locally without GitHub/AWS requests:
 `python3 -m unittest discover -s tests/delivery -v`. CI also runs them.
@@ -194,7 +207,13 @@ This handler does not create missing transactions, authenticate the external sen
 
 ## Manual tests and deployment status
 
-The baseline Lambda and callback pipeline have been deployed and validated end to end. The Stage 12 log changes require a new reviewed deployment before they appear in AWS. See [manual testing](docs/manual-testing.md) for a console event and HTTP test instructions. Bruno/Swagger calls the HTTP APIs, not this SQS Lambda directly.
+The Lambda, callback pipeline and structured logging have been deployed in the
+lab; automatic delivery and end-to-end completion have passed. See
+[manual testing](docs/manual-testing.md) for a console event and HTTP tests.
+Bruno/Swagger calls the HTTP APIs, not this SQS Lambda directly. For the normal
+demonstration, create through the main API and poll its transaction. For a direct
+callback test, use an existing matching transaction and valid result event;
+do not send the main API's business request body to the webhook.
 
 ## Operational logs
 
@@ -208,7 +227,8 @@ validation fails.
 
 The native `ILambdaLogger` named parameters become top-level JSON fields when
 JSON logging is enabled by Terraform. This application change alone does not
-change the deployed log format. After deployment, create a transaction through
+change the deployed log format; Terraform enables native JSON in this lab.
+After deployment, create a transaction through
 the main API with Bruno or Swagger, then inspect the callback-handler log group
 for `CallbackHandled`, `Applied` and the same transaction/correlation IDs. A
 repeated identical callback should log `Duplicate` without changing the final
@@ -216,4 +236,8 @@ transaction timestamps. Conflicting callbacks should log
 `CallbackProcessingFailed` and leave the stored result unchanged; retry/DLQ
 behavior still applies.
 
-Cloning, building and running tests do not deploy resources. Commits and pushes are performed manually by the repository owner.
+Cloning, building and running tests do not deploy resources. A main push after
+CI/CD setup does trigger automatic delivery. This consumer does not authenticate
+the webhook sender; the temporary lab callback uses HTTPS without HMAC. See the
+[project security limits](https://github.com/MarcondesOliveira/async-transaction-infrastructure#limits-costs-and-teardown)
+and [recovery guide](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/lab-operations.md).
